@@ -1,0 +1,210 @@
+#include "libhomeassistant.h"
+#include "homeassistant_connection.h"
+#include "homeassistant_message.h"
+#include "homeassistant_websocket.h"
+
+//static PurpleCmdId cmd_on_id;
+//static PurpleCmdId cmd_off_id;
+//static PurpleCmdId cmd_toggle_id;
+
+static const char *
+ha_list_icon(PurpleAccount *account, PurpleBuddy *buddy)
+{
+    return "homeassistant";
+}
+
+static gchar *
+ha_status_text(PurpleBuddy *buddy)
+{
+    PurplePresence *presence = purple_buddy_get_presence(buddy);
+    PurpleStatus *status = purple_presence_get_active_status(presence);
+    return g_strdup(purple_status_get_name(status));
+}
+
+static void
+ha_tooltip_text(PurpleBuddy *buddy, PurpleNotifyUserInfo *user_info, gboolean full)
+{
+    PurplePresence *presence = purple_buddy_get_presence(buddy);
+    PurpleStatus *status = purple_presence_get_active_status(presence);
+    purple_notify_user_info_add_pair_plaintext(user_info, "State", purple_status_get_name(status));
+}
+
+static GList *
+ha_status_types(PurpleAccount *account)
+{
+    GList *types = NULL;
+
+    types = g_list_append(types, purple_status_type_new(PURPLE_STATUS_AVAILABLE, "online", "Online", TRUE));
+    types = g_list_append(types, purple_status_type_new(PURPLE_STATUS_AWAY, "away", "Away", TRUE));
+    types = g_list_append(types, purple_status_type_new(PURPLE_STATUS_OFFLINE, "offline", "Offline", TRUE));
+
+    return types;
+}
+
+static void
+ha_login(PurpleAccount *account)
+{
+    PurpleConnection *pc = purple_account_get_connection(account);
+    HAAccount *ha;
+
+    ha = g_new0(HAAccount, 1);
+    ha->account = account;
+    ha->pc = pc;
+    ha->server_url = g_strdup(purple_account_get_string(account, "server_url", ""));
+    ha->api_key = g_strdup(purple_account_get_string(account, "api_key", ""));
+    ha->entities = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+    ha->areas = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+    ha->entity_areas = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+
+    purple_connection_set_protocol_data(pc, ha);
+    
+    // Set connection state to connected for now
+    purple_connection_set_state(pc, PURPLE_CONNECTED);
+    
+    // Fetch initial states
+    // ha_fetch_states(ha);
+    ha_websocket_connect(ha);
+}
+
+static void
+ha_close(PurpleConnection *pc)
+{
+    HAAccount *ha = purple_connection_get_protocol_data(pc);
+
+    if (ha) {
+        ha_websocket_close(ha);
+        g_free(ha->server_url);
+        g_free(ha->api_key);
+        g_hash_table_destroy(ha->entities);
+        g_hash_table_destroy(ha->areas);
+        g_hash_table_destroy(ha->entity_areas);
+        g_free(ha);
+    }
+    purple_connection_set_protocol_data(pc, NULL);
+}
+
+static int
+ha_im_send(PurpleConnection *pc, const char *who, const char *message, PurpleMessageFlags flags)
+{
+    HAAccount *ha = purple_connection_get_protocol_data(pc);
+    return ha_send_command(ha, who, message);
+}
+
+static PurplePluginProtocolInfo prpl_info = {
+    .options            = OPT_PROTO_NO_PASSWORD,
+    .icon_spec          = { "png", 16, 16, 16, 16, 0, PURPLE_ICON_SCALE_DISPLAY },
+    .list_icon          = ha_list_icon,
+    //.list_emblems       = NULL,
+    .status_text        = ha_status_text,
+    .tooltip_text       = ha_tooltip_text,
+    .status_types       = ha_status_types,
+    .blist_node_menu    = NULL,
+    .chat_info          = NULL,
+    .chat_info_defaults = NULL,
+    .login              = ha_login,
+    .close              = ha_close,
+    .send_im            = ha_im_send,
+    .set_info           = NULL,
+    .send_typing        = NULL,
+    .get_info           = NULL,
+    .set_status         = NULL,
+    .set_idle           = NULL,
+    .change_passwd      = NULL,
+    .add_buddy          = NULL,
+    .add_buddies        = NULL,
+    .remove_buddy       = NULL,
+    .remove_buddies     = NULL,
+    .add_permit         = NULL,
+    .add_deny           = NULL,
+    .rem_permit         = NULL,
+    .rem_deny           = NULL,
+    .set_permit_deny    = NULL,
+    .join_chat          = NULL, // TODO: Group chat support
+    .reject_chat        = NULL,
+    .get_chat_name      = NULL,
+    .chat_invite        = NULL,
+    .chat_leave         = NULL,
+    .chat_whisper       = NULL,
+    .chat_send          = NULL,
+    .keepalive          = NULL,
+    .register_user      = NULL,
+    .get_cb_info        = NULL,
+    .get_cb_away        = NULL,
+    .alias_buddy        = NULL,
+    .group_buddy        = NULL,
+    .rename_group       = NULL,
+    .buddy_free         = NULL,
+    .convo_closed       = NULL,
+    .normalize          = NULL,
+    .set_buddy_icon     = NULL,
+    .remove_group       = NULL,
+    .get_cb_real_name   = NULL,
+    .set_chat_topic     = NULL,
+    .find_blist_chat    = NULL,
+    .roomlist_get_list  = NULL,
+    .roomlist_cancel    = NULL,
+    .roomlist_expand_category = NULL,
+    .can_receive_file   = NULL,
+    .send_file          = NULL,
+    .new_xfer           = NULL,
+    .offline_message    = NULL,
+    .whiteboard_prpl_ops = NULL,
+    .send_raw           = NULL,
+    .roomlist_room_serialize = NULL,
+    .unregister_user    = NULL,
+    .send_attention     = NULL,
+    .get_attention_types = NULL,
+    .struct_size        = sizeof(PurplePluginProtocolInfo)
+};
+
+static gboolean
+plugin_load(PurplePlugin *plugin)
+{
+    return TRUE;
+}
+
+static gboolean
+plugin_unload(PurplePlugin *plugin)
+{
+    return TRUE;
+}
+
+static void
+init_plugin(PurplePlugin *plugin)
+{
+    PurpleAccountOption *option;
+
+    option = purple_account_option_string_new("Server URL", "server_url", "https://homeassistant.local:8123");
+    prpl_info.protocol_options = g_list_append(prpl_info.protocol_options, option);
+
+    option = purple_account_option_string_new("Long-Lived Access Token", "api_key", "");
+    prpl_info.protocol_options = g_list_append(prpl_info.protocol_options, option);
+}
+
+static PurplePluginInfo info = {
+    .magic          = PURPLE_PLUGIN_MAGIC,
+    .major_version  = PURPLE_MAJOR_VERSION,
+    .minor_version  = PURPLE_MINOR_VERSION,
+    .type           = PURPLE_PLUGIN_PROTOCOL,
+    .ui_requirement = NULL,
+    .flags          = 0,
+    .dependencies   = NULL,
+    .priority       = PURPLE_PRIORITY_DEFAULT,
+    .id             = HOMEASSISTANT_PLUGIN_ID,
+    .name           = "HomeAssistant",
+    .version        = HOMEASSISTANT_PLUGIN_VERSION,
+    .summary        = "HomeAssistant Protocol Plugin",
+    .description    = "Connects to HomeAssistant API to control devices.",
+    .author         = "Antigravity",
+    .homepage       = "",
+    .load           = plugin_load,
+    .unload         = plugin_unload,
+    .destroy        = NULL,
+    .ui_info        = NULL,
+    .extra_info     = &prpl_info,
+    .prefs_info     = NULL,
+    .actions        = NULL,
+    //.padding        = { NULL, NULL, NULL, NULL }
+};
+
+PURPLE_INIT_PLUGIN(homeassistant, init_plugin, info);
