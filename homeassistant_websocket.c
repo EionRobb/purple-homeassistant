@@ -194,7 +194,7 @@ ha_websocket_get_entities(HAAccount *ha)
 }
 
 void
-ha_websocket_call_service(HAAccount *ha, const gchar *domain, const gchar *service, const gchar *entity_id)
+ha_websocket_call_service_with_data(HAAccount *ha, const gchar *domain, const gchar *service, JsonObject *service_data)
 {
     ha->message_id++;
     JsonObject *data = json_object_new();
@@ -203,11 +203,19 @@ ha_websocket_call_service(HAAccount *ha, const gchar *domain, const gchar *servi
     json_object_set_string_member(data, "domain", domain);
     json_object_set_string_member(data, "service", service);
     
-    JsonObject *service_data = json_object_new();
-    json_object_set_string_member(service_data, "entity_id", entity_id);
-    json_object_set_object_member(data, "service_data", service_data);
+    if (service_data) {
+        json_object_set_object_member(data, "service_data", service_data);
+    }
     
     ha_websocket_write_json(ha, data);
+}
+
+void
+ha_websocket_call_service(HAAccount *ha, const gchar *domain, const gchar *service, const gchar *entity_id)
+{
+    JsonObject *service_data = json_object_new();
+    json_object_set_string_member(service_data, "entity_id", entity_id);
+    ha_websocket_call_service_with_data(ha, domain, service, service_data);
 }
 
 static void

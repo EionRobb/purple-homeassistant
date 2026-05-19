@@ -6,6 +6,7 @@ static void
 ha_update_buddy_status(HAAccount *ha, PurpleBuddy *buddy, const gchar *state)
 {
     const gchar *status_id = "offline";
+    const gchar *entity_id = purple_buddy_get_name(buddy);
     
     if (g_strcmp0(state, "on") == 0 || g_strcmp0(state, "home") == 0) {
         status_id = "online";
@@ -19,7 +20,71 @@ ha_update_buddy_status(HAAccount *ha, PurpleBuddy *buddy, const gchar *state)
         status_id = "online";
     }
 
-    purple_prpl_got_user_status(ha->account, purple_buddy_get_name(buddy), status_id, NULL);
+    JsonObject *entity_obj = g_hash_table_lookup(ha->entities, entity_id);
+    JsonObject *attributes = NULL;
+    if (entity_obj && json_object_has_member(entity_obj, "attributes")) {
+        attributes = json_object_get_object_member(entity_obj, "attributes");
+    }
+
+    gchar **parts = g_strsplit(entity_id, ".", 2);
+    const gchar *domain = parts[0];
+    
+    GString *status_msg = g_string_new(NULL);
+    
+    if (g_strcmp0(domain, "sensor") == 0 || g_strcmp0(domain, "numeric_sensor") == 0) {
+        if (attributes && json_object_has_member(attributes, "unit_of_measurement")) {
+            g_string_append_printf(status_msg, "%s %s", state, json_object_get_string_member(attributes, "unit_of_measurement"));
+        } else {
+            g_string_append(status_msg, state);
+        }
+    } else if (g_strcmp0(domain, "light") == 0) {
+        if (g_strcmp0(state, "on") == 0) {
+            if (attributes && json_object_has_member(attributes, "brightness")) {
+                int pct = json_object_get_int_member(attributes, "brightness") * 100 / 255;
+                g_string_append_printf(status_msg, "On (%d%%)", pct);
+            } else {
+                g_string_append(status_msg, "On");
+            }
+        } else {
+            g_string_append(status_msg, "Off");
+        }
+    } else if (g_strcmp0(domain, "cover") == 0) {
+        if (attributes && json_object_has_member(attributes, "current_position")) {
+            g_string_append_printf(status_msg, "%s (%d%%)", state, (int)json_object_get_int_member(attributes, "current_position"));
+        } else {
+            g_string_append(status_msg, state);
+        }
+    } else if (g_strcmp0(domain, "climate") == 0) {
+        if (attributes && json_object_has_member(attributes, "temperature")) {
+            double temp = json_object_get_double_member(attributes, "temperature");
+            if (json_object_has_member(attributes, "current_temperature")) {
+                double curr_temp = json_object_get_double_member(attributes, "current_temperature");
+                g_string_append_printf(status_msg, "%s (Target: %.1f°C, Current: %.1f°C)", state, temp, curr_temp);
+            } else {
+                g_string_append_printf(status_msg, "%s (Target: %.1f°C)", state, temp);
+            }
+        } else {
+            g_string_append(status_msg, state);
+        }
+    } else if (g_strcmp0(domain, "select") == 0 || g_strcmp0(domain, "input_select") == 0) {
+        g_string_append(status_msg, state);
+    } else {
+        // Fallback for simple states that are not on/off/home/not_home
+        if (g_strcmp0(state, "on") != 0 && g_strcmp0(state, "off") != 0 &&
+            g_strcmp0(state, "home") != 0 && g_strcmp0(state, "not_home") != 0 &&
+            g_strcmp0(state, "unavailable") != 0) {
+            g_string_append(status_msg, state);
+        }
+    }
+
+    if (status_msg->len > 0) {
+        purple_prpl_got_user_status(ha->account, entity_id, status_id, "message", status_msg->str, NULL);
+    } else {
+        purple_prpl_got_user_status(ha->account, entity_id, status_id, NULL);
+    }
+
+    g_string_free(status_msg, TRUE);
+    g_strfreev(parts);
 }
 
 void
@@ -31,6 +96,8 @@ ha_process_entities(HAAccount *ha, JsonArray *array)
         const gchar *entity_id = json_object_get_string_member(obj, "entity_id");
         const gchar *state = json_object_get_string_member(obj, "state");
         JsonObject *attributes = json_object_has_member(obj, "attributes") ? json_object_get_object_member(obj, "attributes") : NULL;
+        
+        g_hash_table_insert(ha->entities, g_strdup(entity_id), json_object_ref(obj));
         
         const gchar *friendly_name = entity_id;
         if (attributes && json_object_has_member(attributes, "friendly_name")) {
@@ -78,6 +145,8 @@ ha_process_state_change_event(HAAccount *ha, JsonObject *new_state)
     const gchar *state = json_object_get_string_member(new_state, "state");
     
     if (entity_id && state) {
+        g_hash_table_insert(ha->entities, g_strdup(entity_id), json_object_ref(new_state));
+        
         PurpleBuddy *buddy = purple_find_buddy(ha->account, entity_id);
         if (buddy) {
             ha_update_buddy_status(ha, buddy, state);

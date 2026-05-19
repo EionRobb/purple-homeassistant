@@ -1,6 +1,27 @@
 # HomeAssistant Plugin for libpurple (Pidgin)
 
-A `libpurple` protocol plugin to connect to HomeAssistant. It shows devices as buddies in your buddy list and groups them by room (Area). You can send messages like "on", "off", or "toggle" to buddies to control them.
+A `libpurple` protocol plugin to connect to HomeAssistant. It shows devices as buddies in your buddy list and groups them by room (Area). You can send messages to buddies to control them or interrogate their valid options.
+
+## Usage
+
+You can control your devices by sending Instant Messages to them. 
+
+- **Basic Commands:** Send `on`, `off`, or `toggle` to turn devices on or off.
+- **Help / Device Interrogation:** Send `help` or `?` to any device. The plugin will interrogate the device's capabilities and reply with a list of valid commands and options for that specific device (e.g. supported HVAC modes or select options).
+- **Dynamic Options:** If a device has specific options (like a "Coffee Machine Program" that takes `Espresso` or `Latte`), you can send the exact option name in the chat to select it.
+- **Cover Positions:** Send a number between `0` and `100` to cover devices to set their position.
+- **Light Controls:** For lights, send a number between `0` and `100` (or with a `%` suffix) to set the brightness percentage. You can also send a color name (e.g. `red`, `blue`, `green`, `purple`, `warm_white`) to change the color.
+- **Thermostat (Climate) Controls:** For thermostats, send a number (e.g. `21` or `21.5`) to set the target temperature. You can also send any supported HVAC mode (e.g. `heat`, `cool`, `auto`, `off`) or preset mode to change the mode.
+
+## Enhanced Buddy Statuses
+
+The plugin automatically registers status messages for your buddies in Pidgin, so you can see their real-time state at a glance in your buddy list:
+
+- **Sensors:** Displays the state and unit of measurement (e.g., `21.5 °C` or `303.46 L`).
+- **Covers:** Displays the state and position (e.g., `open (50%)`).
+- **Lights:** Displays the brightness level when on (e.g., `On (75%)`).
+- **Thermostats:** Displays the HVAC mode and target/current temperatures (e.g., `cool (Target: 21.0°C, Current: 20.5°C)`).
+- **Selects:** Displays the currently selected option (e.g., `Espresso`).
 
 ## Installation
 

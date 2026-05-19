@@ -2,6 +2,7 @@
 #include "homeassistant_connection.h"
 #include "homeassistant_message.h"
 #include "homeassistant_websocket.h"
+#include <json-glib/json-glib.h>
 
 //static PurpleCmdId cmd_on_id;
 //static PurpleCmdId cmd_off_id;
@@ -34,9 +35,21 @@ ha_status_types(PurpleAccount *account)
 {
     GList *types = NULL;
 
+#if PURPLE_VERSION_CHECK(3, 0, 0)
     types = g_list_append(types, purple_status_type_new(PURPLE_STATUS_AVAILABLE, "online", "Online", TRUE));
     types = g_list_append(types, purple_status_type_new(PURPLE_STATUS_AWAY, "away", "Away", TRUE));
     types = g_list_append(types, purple_status_type_new(PURPLE_STATUS_OFFLINE, "offline", "Offline", TRUE));
+#else
+    types = g_list_append(types, purple_status_type_new_with_attrs(
+        PURPLE_STATUS_AVAILABLE, "online", "Online", TRUE, TRUE, FALSE,
+        "message", "Message", purple_value_new(PURPLE_TYPE_STRING), NULL));
+    types = g_list_append(types, purple_status_type_new_with_attrs(
+        PURPLE_STATUS_AWAY, "away", "Away", TRUE, TRUE, FALSE,
+        "message", "Message", purple_value_new(PURPLE_TYPE_STRING), NULL));
+    types = g_list_append(types, purple_status_type_new_with_attrs(
+        PURPLE_STATUS_OFFLINE, "offline", "Offline", TRUE, TRUE, FALSE,
+        "message", "Message", purple_value_new(PURPLE_TYPE_STRING), NULL));
+#endif
 
     return types;
 }
@@ -52,7 +65,7 @@ ha_login(PurpleAccount *account)
     ha->pc = pc;
     ha->server_url = g_strdup(purple_account_get_string(account, "server_url", ""));
     ha->api_key = g_strdup(purple_account_get_string(account, "api_key", ""));
-    ha->entities = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+    ha->entities = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify)json_object_unref);
     ha->areas = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
     ha->entity_areas = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 
