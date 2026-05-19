@@ -5,6 +5,10 @@
 #include "purplecompat.h"
 #include <glib.h>
 
+#ifndef _
+#define _(x) (x)
+#endif
+
 #define HOMEASSISTANT_PLUGIN_ID "prpl-homeassistant"
 #define HOMEASSISTANT_PLUGIN_VERSION "0.1"
 
@@ -16,6 +20,7 @@ typedef struct _HAAccount {
     GHashTable *entities; // entity_id -> HABuddy mapping or state
     GHashTable *areas; // area_id -> area_name
     GHashTable *entity_areas; // entity_id -> area_id
+    GHashTable *subscriptions; // entity_id -> GINT_TO_POINTER(1)
     
     // WebSocket
     PurpleSslConnection *websocket;

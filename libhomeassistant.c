@@ -7,11 +7,33 @@
 //static PurpleCmdId cmd_on_id;
 //static PurpleCmdId cmd_off_id;
 //static PurpleCmdId cmd_toggle_id;
+static PurpleCmdId cmd_subscribe_id;
+static PurpleCmdId cmd_unsubscribe_id;
 
 static const char *
 ha_list_icon(PurpleAccount *account, PurpleBuddy *buddy)
 {
     return "homeassistant";
+}
+
+static const char *
+ha_list_emblem(PurpleBuddy *buddy)
+{
+    PurpleAccount *account = purple_buddy_get_account(buddy);
+    if (!account) return NULL;
+    
+    PurpleConnection *pc = purple_account_get_connection(account);
+    if (!pc) return NULL;
+    
+    HAAccount *ha = purple_connection_get_protocol_data(pc);
+    if (!ha || !ha->subscriptions) return NULL;
+    
+    const gchar *entity_id = purple_buddy_get_name(buddy);
+    if (g_hash_table_lookup(ha->subscriptions, entity_id) != NULL) {
+        return "voice";
+    }
+    
+    return NULL;
 }
 
 static gchar *
@@ -28,6 +50,13 @@ ha_tooltip_text(PurpleBuddy *buddy, PurpleNotifyUserInfo *user_info, gboolean fu
     PurplePresence *presence = purple_buddy_get_presence(buddy);
     PurpleStatus *status = purple_presence_get_active_status(presence);
     purple_notify_user_info_add_pair_plaintext(user_info, "State", purple_status_get_name(status));
+    
+    const gchar *message = purple_status_get_attr_string(status, "message");
+    if (message && *message) {
+        gchar *escaped = g_markup_printf_escaped("%s", message);
+        purple_notify_user_info_add_pair_html(user_info, _("Message"), escaped);
+        g_free(escaped);
+    }
 }
 
 static GList *
@@ -68,6 +97,20 @@ ha_login(PurpleAccount *account)
     ha->entities = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify)json_object_unref);
     ha->areas = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
     ha->entity_areas = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+    ha->subscriptions = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+
+    const gchar *subs_str = purple_account_get_string(account, "subscriptions", "");
+    if (subs_str && *subs_str) {
+        gchar **subs = g_strsplit(subs_str, ",", -1);
+        int i;
+        for (i = 0; subs[i] != NULL; i++) {
+            g_strstrip(subs[i]);
+            if (subs[i][0] != '\0') {
+                g_hash_table_replace(ha->subscriptions, g_strdup(subs[i]), GINT_TO_POINTER(1));
+            }
+        }
+        g_strfreev(subs);
+    }
 
     purple_connection_set_protocol_data(pc, ha);
     
@@ -91,6 +134,7 @@ ha_close(PurpleConnection *pc)
         g_hash_table_destroy(ha->entities);
         g_hash_table_destroy(ha->areas);
         g_hash_table_destroy(ha->entity_areas);
+        g_hash_table_destroy(ha->subscriptions);
         g_free(ha);
     }
     purple_connection_set_protocol_data(pc, NULL);
@@ -107,7 +151,7 @@ static PurplePluginProtocolInfo prpl_info = {
     .options            = OPT_PROTO_NO_PASSWORD,
     .icon_spec          = { "png", 16, 16, 16, 16, 0, PURPLE_ICON_SCALE_DISPLAY },
     .list_icon          = ha_list_icon,
-    //.list_emblems       = NULL,
+    .list_emblem        = ha_list_emblem,
     .status_text        = ha_status_text,
     .tooltip_text       = ha_tooltip_text,
     .status_types       = ha_status_types,
@@ -173,12 +217,34 @@ static PurplePluginProtocolInfo prpl_info = {
 static gboolean
 plugin_load(PurplePlugin *plugin)
 {
+    cmd_subscribe_id = purple_cmd_register(
+        "subscribe", 
+        "s", 
+        PURPLE_CMD_P_DEFAULT, 
+        PURPLE_CMD_FLAG_IM | PURPLE_CMD_FLAG_PRPL_ONLY | PURPLE_CMD_FLAG_ALLOW_WRONG_ARGS, 
+        HOMEASSISTANT_PLUGIN_ID, 
+        ha_cmd_subscribe, 
+        "subscribe [device_id]: Subscribe to notifications for a device", 
+        NULL
+    );
+    cmd_unsubscribe_id = purple_cmd_register(
+        "unsubscribe", 
+        "s", 
+        PURPLE_CMD_P_DEFAULT, 
+        PURPLE_CMD_FLAG_IM | PURPLE_CMD_FLAG_PRPL_ONLY | PURPLE_CMD_FLAG_ALLOW_WRONG_ARGS, 
+        HOMEASSISTANT_PLUGIN_ID, 
+        ha_cmd_unsubscribe, 
+        "unsubscribe [device_id]: Unsubscribe from notifications for a device", 
+        NULL
+    );
     return TRUE;
 }
 
 static gboolean
 plugin_unload(PurplePlugin *plugin)
 {
+    purple_cmd_unregister(cmd_subscribe_id);
+    purple_cmd_unregister(cmd_unsubscribe_id);
     return TRUE;
 }
 

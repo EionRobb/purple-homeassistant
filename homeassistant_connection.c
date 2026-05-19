@@ -157,6 +157,21 @@ ha_process_state_change_event(HAAccount *ha, JsonObject *new_state)
             ha_process_entities(ha, array);
             json_array_unref(array);
         }
+        
+        if (ha->subscriptions && g_hash_table_lookup(ha->subscriptions, entity_id) != NULL) {
+            const gchar *friendly_name = entity_id;
+            JsonObject *attributes = NULL;
+            if (json_object_has_member(new_state, "attributes")) {
+                attributes = json_object_get_object_member(new_state, "attributes");
+            }
+            if (attributes && json_object_has_member(attributes, "friendly_name")) {
+                friendly_name = json_object_get_string_member(attributes, "friendly_name");
+            }
+            
+            gchar *notify_msg = g_strdup_printf("%s is now %s", friendly_name, state);
+            purple_serv_got_im(ha->pc, entity_id, notify_msg, PURPLE_MESSAGE_RECV, time(NULL));
+            g_free(notify_msg);
+        }
     }
 }
 

@@ -95,6 +95,12 @@ ha_send_command(HAAccount *ha, const char *who, const char *message)
         g_free(cmd);
         g_strfreev(parts);
         return 1;
+    } else if (purple_strequal(cmd, "subscribe")) {
+        ha_subscribe(ha, who);
+        return 1;
+    } else if (purple_strequal(cmd, "unsubscribe")) {
+        ha_unsubscribe(ha, who);
+        return 1;
     } else {
         gboolean handled = FALSE;
         
@@ -233,4 +239,129 @@ ha_send_command(HAAccount *ha, const char *who, const char *message)
     g_strfreev(parts);
     
     return 1;
+}
+
+static void
+ha_save_subscriptions(HAAccount *ha)
+{
+    GList *keys = g_hash_table_get_keys(ha->subscriptions);
+    GString *subs_str = g_string_new("");
+    GList *l;
+    for (l = keys; l != NULL; l = l->next) {
+        if (subs_str->len > 0) {
+            g_string_append_c(subs_str, ',');
+        }
+        g_string_append(subs_str, (const gchar *)l->data);
+    }
+    g_list_free(keys);
+    
+    purple_account_set_string(ha->account, "subscriptions", subs_str->str);
+    g_string_free(subs_str, TRUE);
+}
+
+void
+ha_subscribe(HAAccount *ha, const gchar *entity_id)
+{
+    g_hash_table_replace(ha->subscriptions, g_strdup(entity_id), GINT_TO_POINTER(1));
+    ha_save_subscriptions(ha);
+
+    PurpleConversation *conv = purple_find_conversation_with_account(PURPLE_CONV_TYPE_IM, entity_id, ha->account);
+    if (!conv) {
+        conv = purple_conversation_new(PURPLE_CONV_TYPE_IM, ha->account, entity_id);
+    }
+    if (conv) {
+        gchar *msg = g_strdup_printf("Subscribed to notifications for %s.", entity_id);
+        purple_conversation_write(conv, NULL, msg, PURPLE_MESSAGE_SYSTEM, time(NULL));
+        g_free(msg);
+    }
+}
+
+void
+ha_unsubscribe(HAAccount *ha, const gchar *entity_id)
+{
+    g_hash_table_remove(ha->subscriptions, entity_id);
+    ha_save_subscriptions(ha);
+
+    PurpleConversation *conv = purple_find_conversation_with_account(PURPLE_CONV_TYPE_IM, entity_id, ha->account);
+    if (!conv) {
+        conv = purple_conversation_new(PURPLE_CONV_TYPE_IM, ha->account, entity_id);
+    }
+    if (conv) {
+        gchar *msg;
+        if (g_hash_table_lookup(ha->subscriptions, entity_id) == NULL) {
+            msg = g_strdup_printf("You are not subscribed to %s.", entity_id);
+        } else {
+            msg = g_strdup_printf("Unsubscribed from notifications for %s.", entity_id);
+        }
+        purple_conversation_write(conv, NULL, msg, PURPLE_MESSAGE_SYSTEM, time(NULL));
+        g_free(msg);
+    }
+}
+
+PurpleCmdRet
+ha_cmd_subscribe(PurpleConversation *conv, const gchar *cmd, gchar **args, gchar **error, void *data)
+{
+    PurpleConnection *pc = purple_conversation_get_connection(conv);
+    if (!pc) {
+        return PURPLE_CMD_RET_CONTINUE;
+    }
+    
+    PurpleAccount *account = purple_connection_get_account(pc);
+    if (g_strcmp0(purple_account_get_protocol_id(account), HOMEASSISTANT_PLUGIN_ID) != 0) {
+        return PURPLE_CMD_RET_CONTINUE;
+    }
+    
+    HAAccount *ha = purple_connection_get_protocol_data(pc);
+    if (!ha) {
+        return PURPLE_CMD_RET_FAILED;
+    }
+    
+    const gchar *entity_id = NULL;
+    if (args && args[0] && args[0][0] != '\0') {
+        entity_id = args[0];
+    } else {
+        entity_id = purple_conversation_get_name(conv);
+    }
+    
+    if (!entity_id || !g_hash_table_lookup(ha->entities, entity_id)) {
+        purple_conversation_write(conv, NULL, "Please specify a valid device entity ID to subscribe to, or run this command in a device conversation window.", PURPLE_MESSAGE_SYSTEM, time(NULL));
+        return PURPLE_CMD_RET_OK;
+    }
+    
+    ha_subscribe(ha, entity_id);
+    return PURPLE_CMD_RET_OK;
+}
+
+PurpleCmdRet
+ha_cmd_unsubscribe(PurpleConversation *conv, const gchar *cmd, gchar **args, gchar **error, void *data)
+{
+    PurpleConnection *pc = purple_conversation_get_connection(conv);
+    if (!pc) {
+        return PURPLE_CMD_RET_CONTINUE;
+    }
+    
+    PurpleAccount *account = purple_connection_get_account(pc);
+    if (g_strcmp0(purple_account_get_protocol_id(account), HOMEASSISTANT_PLUGIN_ID) != 0) {
+        return PURPLE_CMD_RET_CONTINUE;
+    }
+    
+    HAAccount *ha = purple_connection_get_protocol_data(pc);
+    if (!ha) {
+        return PURPLE_CMD_RET_FAILED;
+    }
+    
+    const gchar *entity_id = NULL;
+    if (args && args[0] && args[0][0] != '\0') {
+        entity_id = args[0];
+    } else {
+        entity_id = purple_conversation_get_name(conv);
+    }
+    
+    if (!entity_id) {
+        purple_conversation_write(conv, NULL, "Please specify a device entity ID to unsubscribe from, or run this command in a device conversation window.", PURPLE_MESSAGE_SYSTEM, time(NULL));
+        return PURPLE_CMD_RET_OK;
+    }
+
+    ha_unsubscribe(ha, entity_id);
+    return PURPLE_CMD_RET_OK;
 }
