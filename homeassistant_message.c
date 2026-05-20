@@ -274,13 +274,22 @@ ha_subscribe(HAAccount *ha, const gchar *entity_id)
         purple_conversation_write(conv, NULL, msg, PURPLE_MESSAGE_SYSTEM, time(NULL));
         g_free(msg);
     }
+
+    PurpleBuddy *buddy = purple_find_buddy(ha->account, entity_id);
+    if (buddy) {
+        purple_blist_update_node_icon((PurpleBlistNode *)buddy);
+    }
 }
 
 void
 ha_unsubscribe(HAAccount *ha, const gchar *entity_id)
 {
-    g_hash_table_remove(ha->subscriptions, entity_id);
-    ha_save_subscriptions(ha);
+    gboolean was_subscribed = (g_hash_table_lookup(ha->subscriptions, entity_id) != NULL);
+    
+    if (was_subscribed) {
+        g_hash_table_remove(ha->subscriptions, entity_id);
+        ha_save_subscriptions(ha);
+    }
 
     PurpleConversation *conv = purple_find_conversation_with_account(PURPLE_CONV_TYPE_IM, entity_id, ha->account);
     if (!conv) {
@@ -288,13 +297,18 @@ ha_unsubscribe(HAAccount *ha, const gchar *entity_id)
     }
     if (conv) {
         gchar *msg;
-        if (g_hash_table_lookup(ha->subscriptions, entity_id) == NULL) {
+        if (!was_subscribed) {
             msg = g_strdup_printf("You are not subscribed to %s.", entity_id);
         } else {
             msg = g_strdup_printf("Unsubscribed from notifications for %s.", entity_id);
         }
         purple_conversation_write(conv, NULL, msg, PURPLE_MESSAGE_SYSTEM, time(NULL));
         g_free(msg);
+    }
+
+    PurpleBuddy *buddy = purple_find_buddy(ha->account, entity_id);
+    if (buddy) {
+        purple_blist_update_node_icon((PurpleBlistNode *)buddy);
     }
 }
 

@@ -147,6 +147,65 @@ ha_im_send(PurpleConnection *pc, const char *who, const char *message, PurpleMes
     return ha_send_command(ha, who, message);
 }
 
+static void
+ha_unsubscribe_from_node(PurpleBlistNode *node, gpointer userdata)
+{
+	if(PURPLE_IS_BUDDY(node)) {
+        PurpleBuddy *buddy = PURPLE_BUDDY(node);
+        PurpleConnection *pc = purple_account_get_connection(purple_buddy_get_account(buddy));
+        HAAccount *ha = purple_connection_get_protocol_data(pc);
+
+        if (ha != NULL) {
+            ha_unsubscribe(ha, purple_buddy_get_name(buddy));
+        }
+    }
+}
+
+static void
+ha_subscribe_from_node(PurpleBlistNode *node, gpointer userdata)
+{
+	if(PURPLE_IS_BUDDY(node)) {
+        PurpleBuddy *buddy = PURPLE_BUDDY(node);
+        PurpleConnection *pc = purple_account_get_connection(purple_buddy_get_account(buddy));
+        HAAccount *ha = purple_connection_get_protocol_data(pc);
+
+        if (ha != NULL) {
+            ha_subscribe(ha, purple_buddy_get_name(buddy));
+        }
+    }
+}
+
+static GList *
+ha_node_menu(PurpleBlistNode *node)
+{
+	GList *m = NULL;
+	PurpleMenuAction *act;
+	PurpleBuddy *buddy;
+	
+	if(PURPLE_IS_BUDDY(node))
+	{
+		buddy = PURPLE_BUDDY(node);
+        PurpleConnection *pc = purple_account_get_connection(purple_buddy_get_account(buddy));
+        HAAccount *ha = purple_connection_get_protocol_data(pc);
+		
+		if (ha != NULL) {
+            if (g_hash_table_lookup(ha->subscriptions, purple_buddy_get_name(buddy)) != NULL) {
+                act = purple_menu_action_new(_("Unsubscribe"),
+                                PURPLE_CALLBACK(ha_unsubscribe_from_node),
+                                ha, NULL);
+                m = g_list_append(m, act);
+            } else {
+                act = purple_menu_action_new(_("Subscribe"),
+                                PURPLE_CALLBACK(ha_subscribe_from_node),
+                                ha, NULL);
+                m = g_list_append(m, act);
+            }
+		}
+	}
+	
+	return m;
+}
+
 static PurplePluginProtocolInfo prpl_info = {
     .options            = OPT_PROTO_NO_PASSWORD,
     .icon_spec          = { "png", 16, 16, 16, 16, 0, PURPLE_ICON_SCALE_DISPLAY },
@@ -155,7 +214,7 @@ static PurplePluginProtocolInfo prpl_info = {
     .status_text        = ha_status_text,
     .tooltip_text       = ha_tooltip_text,
     .status_types       = ha_status_types,
-    .blist_node_menu    = NULL,
+    .blist_node_menu    = ha_node_menu,
     .chat_info          = NULL,
     .chat_info_defaults = NULL,
     .login              = ha_login,
