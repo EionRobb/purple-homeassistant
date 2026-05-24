@@ -183,6 +183,17 @@ ha_websocket_get_areas(HAAccount *ha)
 }
 
 static void
+ha_websocket_get_devices(HAAccount *ha)
+{
+    ha->message_id++;
+    ha->get_devices_msg_id = ha->message_id;
+    JsonObject *data = json_object_new();
+    json_object_set_int_member(data, "id", ha->message_id);
+    json_object_set_string_member(data, "type", "config/device_registry/list");
+    ha_websocket_write_json(ha, data);
+}
+
+static void
 ha_websocket_get_entities(HAAccount *ha)
 {
     ha->message_id++;
@@ -238,6 +249,7 @@ ha_websocket_process_frame(HAAccount *ha, const gchar *frame)
                 purple_connection_set_state(ha->pc, PURPLE_CONNECTED);
                 ha_websocket_send_subscribe(ha);
                 ha_websocket_get_areas(ha);
+                ha_websocket_get_devices(ha);
                 ha_websocket_get_entities(ha);
                 ha_websocket_get_states(ha);
             } else if (g_strcmp0(type, "auth_invalid") == 0) {
@@ -272,6 +284,26 @@ ha_websocket_process_frame(HAAccount *ha, const gchar *frame)
                                     }
                                 }
                             }
+                        } else if (id == ha->get_devices_msg_id) {
+                            if (json_node_get_node_type(res_node) == JSON_NODE_ARRAY) {
+                                JsonArray *arr = json_node_get_array(res_node);
+                                guint i, len = json_array_get_length(arr);
+                                for (i = 0; i < len; i++) {
+                                    JsonObject *device = json_array_get_object_element(arr, i);
+                                    const gchar *device_id = json_object_get_string_member(device, "id");
+                                    const gchar *name = json_object_has_member(device, "name") && !json_node_is_null(json_object_get_member(device, "name")) ? json_object_get_string_member(device, "name") : NULL;
+                                    const gchar *area_id = json_object_has_member(device, "area_id") && !json_node_is_null(json_object_get_member(device, "area_id")) ? json_object_get_string_member(device, "area_id") : NULL;
+                                    
+                                    if (device_id) {
+                                        if (name) {
+                                            g_hash_table_insert(ha->devices, g_strdup(device_id), g_strdup(name));
+                                        }
+                                        if (area_id) {
+                                            g_hash_table_insert(ha->device_areas, g_strdup(device_id), g_strdup(area_id));
+                                        }
+                                    }
+                                }
+                            }
                         } else if (id == ha->get_entities_msg_id) {
                             if (json_node_get_node_type(res_node) == JSON_NODE_ARRAY) {
                                 JsonArray *arr = json_node_get_array(res_node);
@@ -279,9 +311,21 @@ ha_websocket_process_frame(HAAccount *ha, const gchar *frame)
                                 for (i = 0; i < len; i++) {
                                     JsonObject *entity = json_array_get_object_element(arr, i);
                                     const gchar *entity_id = json_object_get_string_member(entity, "entity_id");
-                                    const gchar *area_id = json_object_has_member(entity, "area_id") ? json_object_get_string_member(entity, "area_id") : NULL;
-                                    if (entity_id && area_id) {
-                                        g_hash_table_insert(ha->entity_areas, g_strdup(entity_id), g_strdup(area_id));
+                                    const gchar *area_id = json_object_has_member(entity, "area_id") && !json_node_is_null(json_object_get_member(entity, "area_id")) ? json_object_get_string_member(entity, "area_id") : NULL;
+                                    const gchar *device_id = json_object_has_member(entity, "device_id") && !json_node_is_null(json_object_get_member(entity, "device_id")) ? json_object_get_string_member(entity, "device_id") : NULL;
+                                    
+                                    if (entity_id) {
+                                        if (device_id) {
+                                            g_hash_table_insert(ha->entity_devices, g_strdup(entity_id), g_strdup(device_id));
+                                        }
+                                        
+                                        if (!area_id && device_id) {
+                                            area_id = g_hash_table_lookup(ha->device_areas, device_id);
+                                        }
+                                        
+                                        if (area_id) {
+                                            g_hash_table_insert(ha->entity_areas, g_strdup(entity_id), g_strdup(area_id));
+                                        }
                                     }
                                 }
                             }

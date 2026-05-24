@@ -49,7 +49,6 @@ ha_tooltip_text(PurpleBuddy *buddy, PurpleNotifyUserInfo *user_info, gboolean fu
 {
     PurplePresence *presence = purple_buddy_get_presence(buddy);
     PurpleStatus *status = purple_presence_get_active_status(presence);
-    purple_notify_user_info_add_pair_plaintext(user_info, "State", purple_status_get_name(status));
     
     const gchar *message = purple_status_get_attr_string(status, "message");
     if (message && *message) {
@@ -98,6 +97,10 @@ ha_login(PurpleAccount *account)
     ha->areas = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
     ha->entity_areas = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
     ha->subscriptions = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    ha->devices = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+    ha->device_areas = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+    ha->entity_devices = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+    ha->device_contacts = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
 
     const gchar *subs_str = purple_account_get_string(account, "subscriptions", "");
     if (subs_str && *subs_str) {
@@ -135,6 +138,10 @@ ha_close(PurpleConnection *pc)
         g_hash_table_destroy(ha->areas);
         g_hash_table_destroy(ha->entity_areas);
         g_hash_table_destroy(ha->subscriptions);
+        g_hash_table_destroy(ha->devices);
+        g_hash_table_destroy(ha->device_areas);
+        g_hash_table_destroy(ha->entity_devices);
+        g_hash_table_destroy(ha->device_contacts);
         g_free(ha);
     }
     purple_connection_set_protocol_data(pc, NULL);

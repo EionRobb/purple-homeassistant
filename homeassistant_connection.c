@@ -123,13 +123,34 @@ ha_process_entities(HAAccount *ha, JsonArray *array)
             purple_blist_add_group(group, NULL);
         }
         
-        // Find or create buddy
+        // Find or create buddy/contact
         PurpleBuddy *buddy = purple_find_buddy(ha->account, entity_id);
+        const gchar *device_id = g_hash_table_lookup(ha->entity_devices, entity_id);
+        PurpleContact *contact = NULL;
+        if (device_id) {
+            contact = g_hash_table_lookup(ha->device_contacts, device_id);
+            if (!contact) {
+                contact = purple_contact_new();
+                purple_blist_add_contact(contact, group, NULL);
+                g_hash_table_insert(ha->device_contacts, g_strdup(device_id), contact);
+                const gchar *device_name = g_hash_table_lookup(ha->devices, device_id);
+                if (device_name) {
+                    purple_blist_alias_contact(contact, device_name);
+                }
+            }
+        }
+        
         if (!buddy) {
             buddy = purple_buddy_new(ha->account, entity_id, friendly_name);
-            purple_blist_add_buddy(buddy, NULL, group, NULL);
+            purple_blist_add_buddy(buddy, contact, group, NULL);
         } else {
             purple_blist_alias_buddy(buddy, friendly_name);
+            if (contact) {
+                PurpleContact *curr_contact = purple_buddy_get_contact(buddy);
+                if (curr_contact != contact) {
+                    purple_blist_add_buddy(buddy, contact, group, NULL);
+                }
+            }
         }
         
         g_strfreev(parts);

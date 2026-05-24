@@ -21,6 +21,10 @@ typedef struct _HAAccount {
     GHashTable *areas; // area_id -> area_name
     GHashTable *entity_areas; // entity_id -> area_id
     GHashTable *subscriptions; // entity_id -> GINT_TO_POINTER(1)
+    GHashTable *devices; // device_id -> device_name
+    GHashTable *device_areas; // device_id -> area_id
+    GHashTable *entity_devices; // entity_id -> device_id
+    GHashTable *device_contacts; // device_id -> PurpleContact*
     
     // WebSocket
     PurpleSslConnection *websocket;
@@ -32,6 +36,7 @@ typedef struct _HAAccount {
     gboolean websocket_header_received;
     guint message_id;
     guint get_areas_msg_id;
+    guint get_devices_msg_id;
     guint get_entities_msg_id;
     guint get_states_msg_id;
     gchar *frame;
