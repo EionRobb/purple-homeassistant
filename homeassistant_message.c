@@ -6,7 +6,12 @@
 static void
 ha_send_help(HAAccount *ha, const char *who, JsonObject *attributes, const gchar *domain)
 {
-    GString *help = g_string_new("Valid commands:\n- on\n- off\n- toggle");
+    GString *help;
+    if (g_strcmp0(domain, "button") == 0 || g_strcmp0(domain, "input_button") == 0) {
+        help = g_string_new("Valid commands:\n- press");
+    } else {
+        help = g_string_new("Valid commands:\n- on\n- off\n- toggle");
+    }
     
     if (g_strcmp0(domain, "cover") == 0) {
         g_string_append(help, "\n- <number> (0-100) to set position");
@@ -85,11 +90,23 @@ ha_send_command(HAAccount *ha, const char *who, const char *message)
     }
     
     if (g_strcmp0(cmd, "on") == 0) {
-        service = "turn_on";
+        if (g_strcmp0(domain, "button") == 0 || g_strcmp0(domain, "input_button") == 0) {
+            service = "press";
+        } else {
+            service = "turn_on";
+        }
     } else if (g_strcmp0(cmd, "off") == 0) {
-        service = "turn_off";
-    } else if (g_strcmp0(cmd, "toggle") == 0) {
-        service = "toggle";
+        if (g_strcmp0(domain, "button") == 0 || g_strcmp0(domain, "input_button") == 0) {
+            service = "press";
+        } else {
+            service = "turn_off";
+        }
+    } else if (g_strcmp0(cmd, "toggle") == 0 || g_strcmp0(cmd, "press") == 0) {
+        if (g_strcmp0(domain, "button") == 0 || g_strcmp0(domain, "input_button") == 0) {
+            service = "press";
+        } else {
+            service = "toggle";
+        }
     } else if (g_strcmp0(cmd, "help") == 0 || g_strcmp0(cmd, "?") == 0) {
         ha_send_help(ha, who, attributes, domain);
         g_free(cmd);
